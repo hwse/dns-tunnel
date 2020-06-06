@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+	"dns-tunnel-lib",
+	"dns-tunnel-server",
+	"dns-tunnel-client"
+]
