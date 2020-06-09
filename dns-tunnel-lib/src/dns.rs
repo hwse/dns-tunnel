@@ -1,4 +1,3 @@
-
 const ID_SIZE: usize = 2;
 const ID_POS: usize = 0;
 
@@ -19,8 +18,8 @@ const ARCOUNT_POS: usize = 10;
 
 const DNS_HEADER_SIZE: usize =
     ID_SIZE + FLAGS_SIZE +
-    QDCOUNT_SIZE + ANCOUNT_SIZE +
-    NSCOUNT_SIZE + ARCOUNT_SIZE;
+        QDCOUNT_SIZE + ANCOUNT_SIZE +
+        NSCOUNT_SIZE + ARCOUNT_SIZE;
 
 
 #[derive(Default)]
@@ -28,6 +27,7 @@ pub struct DnsHeader {
     pub frame: [u8; DNS_HEADER_SIZE]
 }
 
+#[allow(dead_code)]
 impl DnsHeader {
     ///
     ///  A 16 bit identifier assigned by the program that
@@ -36,27 +36,28 @@ impl DnsHeader {
     ///  to match up replies to outstanding queries.
     ///
     pub fn get_id(&self) -> u16 {
-        u16::from_be_bytes([self.frame[ID_POS], self.frame[ID_POS+1]])
+        self.get_u16(ID_POS)
     }
     pub fn set_id(&mut self, value: u16) {
-        let bytes = value.to_be_bytes();
-        self.frame[ID_POS] = bytes[0];
-        self.frame[ID_POS+1] = bytes[1];
+        self.set_u16(ID_POS, value)
     }
+
     ///
     /// A one bit field that specifies whether this message is a
     /// query (0), or a response (1).
     ///
     pub fn get_qr(&self) -> bool {
-        self.frame[FLAGS_POS] & 0b1000_0000 != 0
+        self.get_flag_bit(FLAGS_POS, 0)
     }
     pub fn set_qr(&mut self, value: bool) {
-        if value {
-            self.frame[FLAGS_POS] |= 0b1000_0000;
-        } else {
-            self.frame[FLAGS_POS] &= 0b0111_1111;
-        }
+        self.set_flag_bit(FLAGS_POS, 0, value)
     }
+
+    ///
+    /// A four bit field that specifies kind of query in this
+    /// message.  This value is set by the originator of a query
+    /// and copied into the response.
+    ///
     pub fn get_op_code(&self) -> OpCode {
         let raw_nr = (self.frame[FLAGS_POS] & 0b0111_1000) >> 3;
         OpCode::from_u8(raw_nr)
@@ -66,11 +67,136 @@ impl DnsHeader {
         self.frame[FLAGS_POS] &= 0b1000_0111;
         self.frame[FLAGS_POS] |= bit_mask;
     }
+
+    ///
+    /// Authoritative Answer - this bit is valid in responses,
+    /// and specifies that the responding name server is an
+    /// authority for the domain name in question section.
+    ///
+    /// Note that the contents of the answer section may have
+    /// multiple owner names because of aliases. The AA bit
+    /// corresponds to the name which matches the query name, or
+    /// the first owner name in the answer section.
+    ///
+    pub fn get_aa(&self) -> bool {
+        self.get_flag_bit(FLAGS_POS, 5)
+    }
+    pub fn set_add(&mut self, value: bool) {
+        self.set_flag_bit(FLAGS_POS, 5, value)
+    }
+
+    ///
+    /// TrunCation - specifies that this message was truncated
+    /// due to length greater than that permitted on the
+    /// transmission channel.
+    ///
+    pub fn get_tc(&self) -> bool {
+        self.get_flag_bit(FLAGS_POS, 6)
+    }
+    pub fn set_tc(&mut self, value: bool) {
+        self.set_flag_bit(FLAGS_POS, 6, value)
+    }
+
+    ///
+    /// Recursion Desired - this bit may be set in a query and
+    /// is copied into the response.  If RD is set, it directs
+    /// the name server to pursue the query recursively.
+    /// Recursive query support is optional.
+    ///
+    pub fn get_rd(&self) -> bool {
+        self.get_flag_bit(FLAGS_POS, 7)
+    }
+    pub fn set_rd(&mut self, value: bool) {
+        self.set_flag_bit(FLAGS_POS, 7, value)
+    }
+
+    ///
+    /// Recursion Available - this be is set or cleared in a
+    /// response, and denotes whether recursive query support is
+    /// available in the name server.
+    ///
+    pub fn get_ra(&self) -> bool {
+        self.get_flag_bit(FLAGS_POS + 1, 0)
+    }
+    pub fn set_ra(&mut self, value: bool) {
+        self.set_flag_bit(FLAGS_POS + 1, 0, value)
+    }
+
+    pub fn get_rcode(&self) -> Option<RCode> {
+        let raw_nr = self.frame[FLAGS_POS + 1] & 0b0000_1111;
+        RCode::from_u8(raw_nr)
+    }
+    pub fn set_rcode(&mut self, value: RCode) {
+        let bit_mask = value as u8;
+        self.frame[FLAGS_POS + 1] &= 0b1111_0000;
+        self.frame[FLAGS_POS + 1] |= bit_mask;
+    }
+
+    pub fn get_qdcount(&self) -> u16 {
+        self.get_u16(QDCOUNT_POS)
+    }
+    pub fn set_qdcount(&mut self, value: u16) {
+        self.set_u16(QDCOUNT_POS, value)
+    }
+
+    pub fn get_ancount(&self) -> u16 {
+        self.get_u16(ANCOUNT_POS)
+    }
+    pub fn set_ancount(&mut self, value: u16) {
+        self.set_u16(ANCOUNT_POS, value)
+    }
+
+    pub fn get_anscount(&self) -> u16 {
+        self.get_u16(NSCOUNT_POS)
+    }
+    pub fn set_nscount(&mut self, value: u16) {
+        self.set_u16(NSCOUNT_POS, value)
+    }
+
+    pub fn get_arscount(&self) -> u16 {
+        self.get_u16(ARCOUNT_POS)
+    }
+    pub fn set_nrcount(&mut self, value: u16) {
+        self.set_u16(ARCOUNT_POS, value)
+    }
+
+    ///
+    /// Read a binary flag (a single bit) set in the frame
+    ///
+    fn get_flag_bit(&self, byte_pos: usize, bit_pos: u8) -> bool {
+        assert!(bit_pos < 8);
+        // bit mask: bit_pos = 0 -> 0b1000_0000 == 1 << (7 - 0)
+        // bit mask: bit_pos = 7 -> 0b0000_0001 == 1 << (7 - 7)
+        self.frame[byte_pos] & 1 << (7 - bit_pos) != 0
+    }
+
+    ///
+    /// Set a binary flag (a single bit) in the frame
+    ///
+    fn set_flag_bit(&mut self, byte_pos: usize, bit_pos: u8, value: bool) {
+        assert!(bit_pos < 8);
+        if value {
+            self.frame[byte_pos] |= 1 << (7 - bit_pos)
+        } else {
+            self.frame[byte_pos] &= !(1 << (7 - bit_pos))
+        }
+    }
+
+    fn get_u16(&self, byte_pos: usize) -> u16 {
+        u16::from_be_bytes([self.frame[byte_pos], self.frame[byte_pos + 1]])
+    }
+    fn set_u16(&mut self, byte_pos: usize, value: u16) {
+        let bytes = value.to_be_bytes();
+        self.frame[byte_pos] = bytes[0];
+        self.frame[byte_pos + 1] = bytes[1];
+    }
 }
 
+///
 /// A four bit field that specifies kind of query in this
 /// message.  This value is set by the originator of a query
 /// and copied into the response
+///
 #[derive(Eq, PartialEq, Debug)]
 pub enum OpCode {
     /// a standard query (QUERY)
@@ -80,7 +206,7 @@ pub enum OpCode {
     /// a server status request (STATUS)
     STATUS = 2,
     /// reserved for future use
-    RESERVED = 3
+    RESERVED = 3,
 }
 
 impl OpCode {
@@ -90,6 +216,55 @@ impl OpCode {
             1 => OpCode::IQUERY,
             2 => OpCode::STATUS,
             _ => OpCode::RESERVED
+        }
+    }
+}
+
+#[derive(Eq, PartialEq, Debug)]
+pub enum RCode {
+    /// No error condition
+    NoError = 0,
+
+    /// Format error - The name server was unable to interpret the query.
+    FormatError = 1,
+
+    /// Server failure - The name server was
+    /// unable to process this query due to a
+    /// problem with the name server.
+    ServerFailure = 2,
+
+    /// Name Error - Meaningful only for
+    /// responses from an authoritative name
+    /// server, this code signifies that the
+    /// domain name referenced in the query does
+    /// not exist.
+    NameError = 3,
+
+    /// Not Implemented - The name server does
+    /// not support the requested kind of query.
+    NotImplemented = 4,
+
+    /// Refused - The name server refuses to
+    /// perform the specified operation for
+    /// policy reasons.  For example, a name
+    /// server may not wish to provide the
+    /// information to the particular requester,
+    /// or a name server may not wish to perform
+    /// a particular operation (e.g., zone
+    Refused = 5,
+
+}
+
+impl RCode {
+    pub fn from_u8(value: u8) -> Option<RCode> {
+        match value {
+            0 => Some(RCode::NoError),
+            1 => Some(RCode::FormatError),
+            2 => Some(RCode::ServerFailure),
+            3 => Some(RCode::NameError),
+            4 => Some(RCode::NotImplemented),
+            5 => Some(RCode::Refused),
+            _ => None
         }
     }
 }
@@ -145,9 +320,36 @@ mod tests {
         header.set_op_code(OpCode::RESERVED);
         assert_eq!(header.get_op_code(), OpCode::RESERVED);
     }
+
+    #[test]
+    fn test_get_bit_flag() {
+        let mut header = DnsHeader::default();
+        header.frame[0] = 0b11001010;
+        assert_eq!(header.get_flag_bit(0, 0), true);
+        assert_eq!(header.get_flag_bit(0, 1), true);
+        assert_eq!(header.get_flag_bit(0, 2), false);
+        assert_eq!(header.get_flag_bit(0, 3), false);
+        assert_eq!(header.get_flag_bit(0, 4), true);
+        assert_eq!(header.get_flag_bit(0, 5), false);
+        assert_eq!(header.get_flag_bit(0, 6), true);
+        assert_eq!(header.get_flag_bit(0, 7), false);
+    }
+
+    #[test]
+    fn test_set_bit_flag() {
+        let mut header = DnsHeader::default();
+        for i in 0..2 {
+            for bit_pos in 0..7 {
+                header.set_flag_bit(i, bit_pos, true);
+                assert_eq!(header.get_flag_bit(i, bit_pos), true);
+                header.set_flag_bit(i, bit_pos, false);
+                assert_eq!(header.get_flag_bit(i, bit_pos), false);
+            }
+        }
+    }
 }
 
-
+#[allow(dead_code)]
 enum ResourceRecordType {
     /// a host address
     A = 1,
