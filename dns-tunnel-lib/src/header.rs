@@ -1,3 +1,6 @@
+use std::io;
+use std::io::Read;
+
 const ID_SIZE: usize = 2;
 const ID_POS: usize = 0;
 
@@ -22,13 +25,19 @@ const DNS_HEADER_SIZE: usize =
         NSCOUNT_SIZE + ARCOUNT_SIZE;
 
 
-#[derive(Default)]
-pub struct DnsHeader {
+#[derive(Default, Debug)]
+pub struct Header {
     pub frame: [u8; DNS_HEADER_SIZE]
 }
 
 #[allow(dead_code)]
-impl DnsHeader {
+impl Header {
+    pub fn read<T: Read>(mut reader: T) -> io::Result<Header> {
+        let mut frame = [0 as u8; DNS_HEADER_SIZE];
+        reader.read_exact(&mut frame)?;
+        Ok(Header { frame })
+    }
+
     ///
     ///  A 16 bit identifier assigned by the program that
     ///  generates any kind of query.  This identifier is copied
@@ -275,7 +284,7 @@ mod tests {
 
     #[test]
     fn test_id() {
-        let mut header = DnsHeader::default();
+        let mut header = Header::default();
         header.frame[0] = 10;
         header.frame[1] = 32;
         assert_eq!(header.get_id(), 2592);
@@ -285,12 +294,12 @@ mod tests {
 
     #[test]
     fn test_qr() {
-        let mut qr_true = DnsHeader::default();
+        let mut qr_true = Header::default();
         qr_true.frame[2] = 0b1000_0000;
         assert_eq!(qr_true.get_qr(), true);
-        assert_eq!(DnsHeader::default().get_qr(), false);
+        assert_eq!(Header::default().get_qr(), false);
 
-        let mut header = DnsHeader::default();
+        let mut header = Header::default();
         header.set_qr(false);
         assert_eq!(header.get_qr(), false);
         header.set_qr(true);
@@ -299,8 +308,8 @@ mod tests {
 
     #[test]
     fn test_op_code() {
-        assert_eq!(DnsHeader::default().get_op_code(), OpCode::QUERY);
-        let mut header = DnsHeader::default();
+        assert_eq!(Header::default().get_op_code(), OpCode::QUERY);
+        let mut header = Header::default();
         header.frame[FLAGS_POS] = 1 << 3;
         assert_eq!(header.get_op_code(), OpCode::IQUERY);
         header.frame[FLAGS_POS] = 2 << 3;
@@ -310,7 +319,7 @@ mod tests {
         header.frame[FLAGS_POS] = 4 << 3;
         assert_eq!(header.get_op_code(), OpCode::RESERVED);
 
-        header = DnsHeader::default();
+        header = Header::default();
         header.set_op_code(OpCode::QUERY);
         assert_eq!(header.get_op_code(), OpCode::QUERY);
         header.set_op_code(OpCode::IQUERY);
@@ -323,7 +332,7 @@ mod tests {
 
     #[test]
     fn test_get_bit_flag() {
-        let mut header = DnsHeader::default();
+        let mut header = Header::default();
         header.frame[0] = 0b11001010;
         assert_eq!(header.get_flag_bit(0, 0), true);
         assert_eq!(header.get_flag_bit(0, 1), true);
@@ -337,7 +346,7 @@ mod tests {
 
     #[test]
     fn test_set_bit_flag() {
-        let mut header = DnsHeader::default();
+        let mut header = Header::default();
         for i in 0..2 {
             for bit_pos in 0..7 {
                 header.set_flag_bit(i, bit_pos, true);
